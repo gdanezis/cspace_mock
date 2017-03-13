@@ -96,11 +96,76 @@ def test_chainspace_Transaction():
         assert oID in cs.active and cs.active[oID] is None
         assert oID in cs.db
 
-@pytest.mark.skip(reason="Depends on Checker")
+## Define a test checker as a service
+
+from flask import Flask, request
+app = Flask(__name__)
+
+"""
+
+Example_transfer = {
+        "contractMethod": "/bank/transfer",
+        "inputs": [Sally_account, Alice_account],
+        "referenceInputs": [],
+        "parameters": {"amount":8},
+        "outputs": [Sally_account_new, Alice_account_new]
+}
+
+"""
+
+def start_app(app):
+    app.run(threaded=True)
+
+def ccheck(V, msg):
+    if not V:
+        raise Exception(msg)
+
+@app.route("/bank/transfer", methods=["POST"])
+def bank_transfer():
+    if request.method == "POST":
+        try:
+            T = loads(request.data)
+            T = T[u"transaction"]
+
+            ccheck(T["contractMethod"] == "/bank/transfer", "Wrong Method")
+            ccheck(len(T["referenceInputs"]) == 0, "Expect no references")
+
+            from_account, to_account = T["inputs"]
+            amount = T["parameters"]["amount"]
+            from_account_new, to_account_new = T["outputs"] 
+
+            ccheck(0 < amount, "Transfer should be positive")
+            ccheck(from_account["accountId"] == from_account_new["accountId"], "Old and new account do not match")
+            ccheck(to_account["accountId"] == to_account_new["accountId"], "Old and new account do not match")
+            ccheck(amount <= from_account["amount"], "No funds available")
+            ccheck(from_account["amount"] - amount == from_account_new["amount"], "Incorrect new balance")
+            ccheck(to_account["amount"] + amount == to_account_new["amount"], "Incorrect new balance")
+            
+
+            return dumps({"status": True})
+        except KeyError as e:
+            return dumps({"status":False, "message":e.args})
+        except Exception as e:
+            return dumps({"status":False, "message":e.args})
+    else:
+        return dumps({"status":False, "message":"Use POST method."})
+
+
+from threading import Thread
+
+# @pytest.mark.skip(reason="Depends on Checker")
 def test_request():
-    T = dumps(Example_transfer)
-    r = requests.post(r"http://192.168.0.15:4567/bank/transfer", data = {"transaction": T})
-    print loads(r.text)
+    t = Thread(target=start_app, args=(app,))
+    t.start()
+
+    try:
+        T = dumps({"transaction": Example_transfer})
+        r = requests.post(r"http://127.0.0.1:5000/bank/transfer", data = T)
+        assert loads(r.text)["status"]
+    except Exception as e:
+        print "Error", e
+    finally:
+        t._Thread__stop()
 
 
 def test_process():
