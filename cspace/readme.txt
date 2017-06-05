@@ -1,1 +1,3 @@
+To run the test:
+
 py.test -s --cov=. . --cov-report term --cov-report html --cov-config ../coveragerc
